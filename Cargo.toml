@@ -1,0 +1,8 @@
+[package]
+name = "family-graph"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+calamine = "0.25.0"
+petgraph = "0.8.2"
