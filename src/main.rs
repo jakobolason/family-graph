@@ -7,8 +7,7 @@ use petgraph::{Directed, Direction, Graph};
 use std::path::Path;
 use petgraph::adj::Neighbors;
 use petgraph::dot::Dot;
-
-
+use crate::secrets::{COMMON_ANCESTOR1, COMMON_ANCESTOR1_LASTNAME, COMMON_ANCESTOR1_LIFE};
 
 #[derive(Debug)]
 struct Person {
@@ -72,7 +71,6 @@ enum Relationship {
     Married,
     Divorced,
     Dating,
-    Engaged,
     ChildFromPartner,
     NotFound,
 }
@@ -81,11 +79,11 @@ type FamilyGraph = Graph<Person, Relationship, Directed>;
 
 fn relation_check(name: String) -> Relationship {
     if name.contains("~") {
-        Relationship::Engaged
+        Relationship::Married
+    } else if name.contains("-/-") {
+        Relationship::Divorced    
     } else if name.contains("-") {
         Relationship::Dating
-    } else if name.contains("-/-") {
-        Relationship::Divorced
     } else if name.contains("- -") {
         Relationship::ChildFromPartner
     } else {
@@ -99,35 +97,33 @@ fn insert_relative(
     parent: &mut NodeIndex,
     level: i8,
     new_gen: i8,
-    person: Person,
-    n: i8 )
+    person: Person )
 {
+    let n = level - new_gen;
     let new_node = family.add_node(person);
-    if level == -1 || new_gen == 0 {
-        // beginning of loop
-        *parent = new_node;
-    } else if n == 0 || n == -1 { // look in algorithm_ideas.md for explanation
+    if n == 0 || n == -1 { // look in algorithm_ideas.md for explanation
         if n == -1 { *parent = *crnt; } // 1 edge from parent to crnt
     } else if new_gen == level {
         // siblings
+        *crnt = new_node;
+        return
     } else if new_gen > 0 && n > 0 {
         // went from child to it's parent(or grandparent),
         // so should look up the tree
         for _ in 0..n{
             if let Some(grandparent) = family
-                .neighbors_directed(*crnt, Direction::Incoming)
+                .neighbors_directed(*parent, Direction::Incoming)
                 .next()
             {
                 *parent = grandparent;
             }
         }
-        *crnt = new_node;
-        family.add_edge(*parent, *crnt, Relationship::Child);
     }
+    *crnt = new_node;
+    family.add_edge(*parent, *crnt, Relationship::Child);
 }
 
 fn run(path: &Path) -> () {
-    // opens a new workbook
     let mut workbook: Xls<_> = open_workbook(path).expect("Cannot open file");
 
     // Read whole worksheet data and provide some statistics
@@ -139,35 +135,58 @@ fn run(path: &Path) -> () {
         "Found {} cells in 'Sheet1', including {} non empty cells",
         total_cells, non_empty_cells
     );
-    // alternatively, we can manually filter rows
-    assert_eq!(
-        non_empty_cells,
-        range
-            .rows()
-            .flat_map(|r| r.iter().filter(|&c| c != &Data::Empty))
-            .count()
-    );
-    let rows = range.get_size().0;
-    // range.used_cells().for_each(|c| {let char = c.2; print!("{}\n", char);})
+
     let all_rows: Vec<_> = range.rows().collect();
-    let families: Vec<Vec<_>> = all_rows
-        .split(|r| r.get(0).map_or(true, |cell| cell.is_empty()))
-        .filter(|group| !group.is_empty())
-        .map(|group| group.to_vec())
-        .collect();
-    println!("DONE, nr of families: {}", families.len());
-    println!("{:?}", families[3]);
-    // println!("{:?}", families[2]);
-    // -1 to indicate the common ancestor node
+
+    let entries: Vec<Vec<_>> = match all_rows.len() {
+        len if len > 5 => {
+            all_rows[2..len-3]
+                .split(|r| r.get(0).map_or(true, |cell| cell.is_empty()))
+                .filter(|group| !group.is_empty())
+                .map(|group| group.to_vec())
+                .collect()
+        },
+        _ => {
+            println!("Warning: Not enough rows to trim (need >5, got {})", all_rows.len());
+            Vec::new()
+        }
+    };
+    println!("DONE, nr of entries: {}", entries.len());
+    println!("{:?}", entries[3]);
+    // -1 to indicate the common ancestor node, and to comply with Excel sheet standard
     let mut level: i8 = -1;
 
     let mut family = FamilyGraph::new();
-    let mut parent = family.add_node(Person::default());
-    let mut crnt = family.add_node(Person::default());
+    // Adds the common ancestors at the top
+    let mut parent = family.add_node(Person {
+        generation: -1, 
+        name: COMMON_ANCESTOR1.to_string(), 
+        birthdate: COMMON_ANCESTOR1_LIFE.to_string(), 
+        last_name: COMMON_ANCESTOR1_LASTNAME.to_string(), 
+        address: "".to_string(), 
+        city: "".to_string(), 
+        landline: "".to_string(),
+        mobile_number: "".to_string(),
+        email: "".to_string(),
+    });
+    let parent_partner = family.add_node(Person {
+        generation: -1,
+        name: COMMON_ANCESTOR1.to_string(),
+        birthdate: COMMON_ANCESTOR1_LIFE.to_string(),
+        last_name: COMMON_ANCESTOR1_LASTNAME.to_string(),
+        address: "".to_string(),
+        city: "".to_string(),
+        landline: "".to_string(),
+        mobile_number: "".to_string(),
+        email: "".to_string(),
+    });
+    
+    family.add_edge(parent, parent_partner, Relationship::Married);
+    let mut crnt = parent;
 
-    for family_group in families {
+    for family_group in entries {
         for person in family_group {
-            // first entry is the direct relative
+            // map Data into vector
             let person_vec: Vec<String> = person.iter()
                 .map(|cell| cell.to_string()).collect();
             // get the current gen from the name (amount of *)
@@ -179,12 +198,11 @@ fn run(path: &Path) -> () {
             } else {
                 Relationship::Relative
             };
-            let row_info: Person =
-                Person::new(person_vec, new_gen).expect("Cannot create person from row");
+            let row_info: Person = Person::new(person_vec, new_gen)
+                .expect("Cannot create person from row");
             if relation == Relationship::Relative {
-                let n = level - new_gen;
                 // updates crnt and parent, and inserts child into family
-                insert_relative(&mut family, &mut crnt, &mut parent, level, new_gen, row_info, n);
+                insert_relative(&mut family, &mut crnt, &mut parent, level, new_gen, row_info);
                 // update level
                 level = new_gen;
             } else if relation == Relationship::ChildFromPartner {
@@ -211,7 +229,6 @@ fn run(path: &Path) -> () {
                 Relationship::Married => "style=bold, color=red, penwidth=3".to_owned(),
                 Relationship::Divorced => "style=dashed, color=red, penwidth=2".to_owned(),
                 Relationship::Dating => "style=dotted, color=pink, penwidth=2".to_owned(),
-                Relationship::Engaged => "style=solid, color=purple, penwidth=2".to_owned(),
                 Relationship::ChildFromPartner => "style=dashed, color=orange, penwidth=2".to_owned(),
                 Relationship::Relative => "style=dashed, color=gray, penwidth=1".to_owned(),
                 Relationship::NotFound => "style=dotted, color=lightgray, penwidth=1".to_owned(),
