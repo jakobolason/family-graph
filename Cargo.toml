@@ -1,28 +1,45 @@
 [package]
-name = "family-graph"
+name = "family_tree"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "family_tree"
+path = "src/main.rs"
+
 [lib]
-crate-type = ["cdylib"]
+name = "family_tree"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-calamine = "0.25.0"
+# Always included
 petgraph = "0.8.2"
-wasm-bindgen = "0.2.100"
-serde = { version = "1.0.219", features = ["derive"] }
-serde-wasm-bindgen = "0.6.5"
-actix-web = "4.11.0"
-env_logger = "0.11.8"
-actix-files = "0.6.6"
-wasm-pack = "0.13.1"
+calamine = "0.28.0"
+serde = { version = "1.0", features = ["derive"] }
+
+# Server-only (optional)
+actix-web = { version = "4", optional = true }
+actix-files = { version = "0.6", optional = true }
+env_logger = { version = "0.11.8", optional = true }
+dotenv = { version = "0.15", optional = true }
+
+# WASM-only (optional)
+wasm-bindgen = { version = "0.2", optional = true }
+serde-wasm-bindgen = { version = "0.6.5", optional = true }
+js-sys = { version = "0.3", optional = true }
 
 [dependencies.web-sys]
 version = "0.3"
+optional = true
 features = [
     "console",
     "Window",
     "Document",
     "Element",
-    "HtmlElement",
 ]
+
+[features]
+default = []
+server = ["actix-web", "actix-files", "env_logger", "dotenv"]
+wasm = ["wasm-bindgen", "serde-wasm-bindgen", "js-sys", "web-sys"]
