@@ -1,13 +1,12 @@
-mod secrets;
-
-use calamine::XlsxError::RelationshipNotFound;
-use calamine::{Data, DataType, Error, RangeDeserializerBuilder, Reader, Xls, open_workbook};
+use calamine::{DataType, Reader, Xls, open_workbook};
 use petgraph::graph::NodeIndex;
 use petgraph::{Directed, Direction, Graph};
 use std::path::Path;
-use petgraph::adj::Neighbors;
 use petgraph::dot::Dot;
-use crate::secrets::{COMMON_ANCESTOR1, COMMON_ANCESTOR1_LASTNAME, COMMON_ANCESTOR1_LIFE};
+use std::env;
+use dotenv::dotenv as dotenv;
+use std::fs::File;
+use std::io::prelude::*;
 
 #[derive(Debug)]
 struct Person {
@@ -65,7 +64,6 @@ impl Person {
 
 #[derive(Debug, PartialEq)]
 enum Relationship {
-    Parent,
     Child,
     Relative,
     Married,
@@ -123,21 +121,54 @@ fn insert_relative(
     family.add_edge(*parent, *crnt, Relationship::Child);
 }
 
-fn run(path: &Path) -> () {
+/// Helper function: Sets the common relatives for the graph
+fn set_common_relatives() -> (Person, Person) {
+    match env::var("COMMON_ANCESTOR1") {
+        Ok(value) => println!("Common ancestor: {}", value),
+        Err(e) => {
+            eprintln!("Error reading COMMON_ANCESTOR1: {}", e);
+            eprintln!("Make sure your .env file exists and dotenv().ok() is called");
+        }
+    }
+    let common_ancestor1 = std::env::var("COMMON_ANCESTOR1").expect("COMMON_ANCESTOR1 must be set");
+    let common_ancestor1_life = std::env::var("COMMON_ANCESTOR1_LIFE").expect("COMMON_ANCESTOR1_LIFE must be set");
+    let common_ancestor1_lastname = std::env::var("COMMON_ANCESTOR1_LASTNAME").expect("COMMON_ANCESTOR1_LASTNAME must be set");
+    let common_ancestor2 = std::env::var("COMMON_ANCESTOR2").expect("COMMON_ANCESTOR2 must be set");
+    let common_ancestor2_life = std::env::var("COMMON_ANCESTOR2_LIFE").expect("COMMON_ANCESTOR2_LIFE must be set");
+    let common_ancestor2_lastname = std::env::var("COMMON_ANCESTOR2_LASTNAME").expect("COMMON_ANCESTOR2_LASTNAME must be set");
+
+    // Adds the common ancestors at the top
+    (Person {
+        generation: -1,
+        name: common_ancestor1.to_string(),
+        birthdate: common_ancestor1_life.to_string(),
+        last_name: common_ancestor1_lastname.to_string(),
+        address: "".to_string(),
+        city: "".to_string(),
+        landline: "".to_string(),
+        mobile_number: "".to_string(),
+        email: "".to_string(),
+    }, Person {
+        generation: -1,
+        name: common_ancestor2.to_string(),
+        birthdate: common_ancestor2_life.to_string(),
+        last_name: common_ancestor2_lastname.to_string(),
+        address: "".to_string(),
+        city: "".to_string(),
+        landline: "".to_string(),
+        mobile_number: "".to_string(),
+        email: "".to_string(),
+    })
+}
+
+fn run(path: &Path) -> std::io::Result<()> {
     let mut workbook: Xls<_> = open_workbook(path).expect("Cannot open file");
 
     // Read whole worksheet data and provide some statistics
     let range = workbook.worksheet_range("Ark1")
         .expect("Cannot get worksheet");
-    let total_cells = range.get_size().0 * range.get_size().1;
-    let non_empty_cells: usize = range.used_cells().count();
-    println!(
-        "Found {} cells in 'Sheet1', including {} non empty cells",
-        total_cells, non_empty_cells
-    );
 
     let all_rows: Vec<_> = range.rows().collect();
-
     let entries: Vec<Vec<_>> = match all_rows.len() {
         len if len > 5 => {
             all_rows[2..len-3]
@@ -151,39 +182,17 @@ fn run(path: &Path) -> () {
             Vec::new()
         }
     };
-    println!("DONE, nr of entries: {}", entries.len());
-    println!("{:?}", entries[3]);
-    // -1 to indicate the common ancestor node, and to comply with Excel sheet standard
-    let mut level: i8 = -1;
 
     let mut family = FamilyGraph::new();
-    // Adds the common ancestors at the top
-    let mut parent = family.add_node(Person {
-        generation: -1, 
-        name: COMMON_ANCESTOR1.to_string(), 
-        birthdate: COMMON_ANCESTOR1_LIFE.to_string(), 
-        last_name: COMMON_ANCESTOR1_LASTNAME.to_string(), 
-        address: "".to_string(), 
-        city: "".to_string(), 
-        landline: "".to_string(),
-        mobile_number: "".to_string(),
-        email: "".to_string(),
-    });
-    let parent_partner = family.add_node(Person {
-        generation: -1,
-        name: COMMON_ANCESTOR1.to_string(),
-        birthdate: COMMON_ANCESTOR1_LIFE.to_string(),
-        last_name: COMMON_ANCESTOR1_LASTNAME.to_string(),
-        address: "".to_string(),
-        city: "".to_string(),
-        landline: "".to_string(),
-        mobile_number: "".to_string(),
-        email: "".to_string(),
-    });
-    
+
+    let (ancestor, wife_ancestor): (Person, Person) = set_common_relatives();
+    let mut parent = family.add_node(ancestor);
+    let parent_partner = family.add_node(wife_ancestor);
     family.add_edge(parent, parent_partner, Relationship::Married);
     let mut crnt = parent;
 
+    // -1 to indicate the common ancestor node, and to comply with Excel sheet standard
+    let mut level: i8 = -1;
     for family_group in entries {
         for person in family_group {
             // map Data into vector
@@ -225,7 +234,6 @@ fn run(path: &Path) -> () {
             // Get the edge weight (relationship type)
             match edge_ref.weight() {
                 Relationship::Child => "style=solid, color=black, penwidth=2".to_owned(),
-                Relationship::Parent => "style=solid, color=blue, penwidth=2".to_owned(),
                 Relationship::Married => "style=bold, color=red, penwidth=3".to_owned(),
                 Relationship::Divorced => "style=dashed, color=red, penwidth=2".to_owned(),
                 Relationship::Dating => "style=dotted, color=pink, penwidth=2".to_owned(),
@@ -241,11 +249,19 @@ fn run(path: &Path) -> () {
                     person.name.replace("\"", "\\\""))  // Escape quotes in names
         },
     );
-    println!("Enhanced DOT format:\n{:?}", fancy_dot);
+    // println!("Enhanced DOT format:\n{:?}", fancy_dot);
+    let mut file = File::create("family_graph.txt")?;
+    file.write(format!("{:?}", fancy_dot).as_bytes())?;
+    Ok(())
 }
 
 fn main() {
-    let path = "./src/Wistoft_familien.xls";
+    dotenv().ok();
+    match dotenv() {
+        Ok(path) => println!("Loaded .env from: {:?}", path),
+        Err(e) => println!("Could not load .env file: {}", e),
+    }
+    let path = "./static/Wistoft_familien.xls";
     let full_path = Path::new(&path);
     if full_path.exists() {
         println!("✓ File exists at the specified path");

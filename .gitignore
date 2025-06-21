@@ -1,3 +1,4 @@
 /target
 /src/Wistoft_familien.xls
 /src/secrets.rs
+./.env

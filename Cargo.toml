@@ -5,4 +5,5 @@ edition = "2024"
 
 [dependencies]
 calamine = "0.25.0"
+dotenv = "0.15.0"
 petgraph = "0.8.2"
