@@ -6,22 +6,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 
-#[cfg(feature = "wasm")]
-use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
-#[cfg(feature = "wasm")]
-use serde_wasm_bindgen;
+use wasm_bindgen::prelude::*;
 
-// Import console.log for debugging
-// #[wasm_bindgen]
-// unsafe extern "C" {
-//     #[wasm_bindgen(js_namespace = console)]
-//     fn log(s: &str);
-// }
-//
-// macro_rules! console_log {
-//     ($($t:tt)*) => (log(&format_args!($($t)*).to_string()))
-// }
-
+#[wasm_bindgen]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct Person {
     generation: i8,
@@ -34,7 +21,7 @@ struct Person {
     mobile_number: String,
     email: String,
 }
-
+#[wasm_bindgen]
 impl Person {
     fn new(info: Vec<String>, generation: i8) -> Result<Self, &'static str> {
         let [
@@ -76,6 +63,7 @@ impl Person {
     }
 }
 
+#[wasm_bindgen]
 #[derive(Serialize, Debug)]
 pub struct NetworkNode {
     pub id: String,
@@ -87,18 +75,21 @@ pub struct NetworkNode {
     pub person_data: Person,
 }
 
+#[wasm_bindgen]
 #[derive(Serialize, Debug)]
 pub struct NodeColor {
     pub background: String,
     pub border: String,
 }
 
+#[wasm_bindgen]
 #[derive(Serialize, Debug)]
 pub struct FontStyle {
     pub size: i32,
     pub color: String,
 }
 
+#[wasm_bindgen]
 #[derive(Serialize, Debug)]
 pub struct NetworkEdge {
     pub from: String,
@@ -110,14 +101,16 @@ pub struct NetworkEdge {
     pub arrows: String,
 }
 
+#[wasm_bindgen]
 #[derive(Serialize, Debug)]
 pub struct FamilyNetworkData {
     pub nodes: Vec<NetworkNode>,
     pub edges: Vec<NetworkEdge>,
 }
 
+#[wasm_bindgen]
 #[derive(Debug, PartialEq)]
-enum Relationship {
+pub enum Relationship {
     Child,
     Relative,
     Married,
@@ -200,25 +193,6 @@ impl FamilyTreeProcessor {
         let network_data = FamilyNetworkData { nodes, edges };
         serde_wasm_bindgen::to_value(&network_data).unwrap()
     }
-
-    // Get detailed info for a specific person (called when node is clicked)
-    // #[wasm_bindgen]
-    // pub fn get_person_details(&self, node_id: &str) -> JsValue {
-    //     console_log!("Getting details for: {}", node_id);
-    //
-    //     // Extract node index from node_id
-    //     if let Some(index_str) = node_id.strip_prefix("node_") {
-    //         if let Ok(index) = index_str.parse::<usize>() {
-    //             if let Some(node_index) = petgraph::graph::NodeIndex::new(index).into() {
-    //                 if let Some(person) = graph.node_weight(node_index) {
-    //                     return serde_wasm_bindgen::to_value(person).unwrap();
-    //                 }
-    //             }
-    //         }
-    //     }
-    //
-    //     JsValue::NULL
-    // }
 
     /// Helper function: Uses the symbols defined to determine the relationship to the last relative
     fn relation_check(name: String) -> Relationship {
@@ -421,7 +395,3 @@ impl FamilyTreeProcessor {
     }
 }
 
-// Initialize WASM module
-// pub fn main() {
-//     unsafe console_log!("WASM module loaded!");
-// }

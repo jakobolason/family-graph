@@ -3,14 +3,10 @@ name = "family_tree"
 version = "0.1.0"
 edition = "2024"
 
-[[bin]]
-name = "family_tree"
-path = "src/main.rs"
-
 [lib]
 name = "family_tree"
 path = "src/lib.rs"
-crate-type = ["cdylib", "rlib"]
+crate-type = ["cdylib"]
 
 [dependencies]
 # Always included
@@ -18,28 +14,8 @@ petgraph = "0.8.2"
 calamine = "0.28.0"
 serde = { version = "1.0", features = ["derive"] }
 
-# Server-only (optional)
-actix-web = { version = "4", optional = true }
-actix-files = { version = "0.6", optional = true }
-env_logger = { version = "0.11.8", optional = true }
-dotenv = { version = "0.15", optional = true }
-
-# WASM-only (optional)
 wasm-bindgen = { version = "0.2", optional = true }
 serde-wasm-bindgen = { version = "0.6.5", optional = true }
-js-sys = { version = "0.3", optional = true }
 
-[dependencies.web-sys]
-version = "0.3"
-optional = true
-features = [
-    "console",
-    "Window",
-    "Document",
-    "Element",
-]
 
-[features]
-default = []
-server = ["actix-web", "actix-files", "env_logger", "dotenv"]
-wasm = ["wasm-bindgen", "serde-wasm-bindgen", "js-sys", "web-sys"]
+
