@@ -3,10 +3,11 @@ use petgraph::graph::NodeIndex;
 use petgraph::{Directed, Direction, Graph};
 use std::path::Path;
 use petgraph::dot::Dot;
-use std::env;
+use std::{env, fmt};
+use std::fmt::Formatter;
 use dotenv::dotenv as dotenv;
-use std::fs::File;
-use std::io::prelude::*;
+use graphviz_rust::{cmd::{CommandArg, Format}, exec, parse};
+use graphviz_rust::attributes::packmode::graph;
 
 #[derive(Debug)]
 struct Person {
@@ -33,10 +34,11 @@ impl Person {
         mobile_number,
         email,
         ]: [String; 8] = info.try_into().map_err(|_| "Expected exactly 8 elements")?;
+        let new_name = format!("{}, {}", name, generation);
 
         Ok(Person {
             generation,
-            name,
+            name: new_name,
             birthdate,
             last_name,
             address,
@@ -62,6 +64,12 @@ impl Person {
     }
 }
 
+impl fmt::Display for Person {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.name)
+    }
+}
+
 #[derive(Debug, PartialEq)]
 enum Relationship {
     Child,
@@ -71,6 +79,20 @@ enum Relationship {
     Dating,
     ChildFromPartner,
     NotFound,
+}
+
+impl fmt::Display for Relationship {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Relationship::Child => write!(f, "Child"),
+            Relationship::Relative => write!(f, "Relative"),
+            Relationship::Married => write!(f, "Married"),
+            Relationship::Divorced => write!(f, "Divorced"),
+            Relationship::Dating => write!(f, "Kærester"),
+            Relationship::ChildFromPartner => write!(f, "ChildFromPartner"),
+            Relationship::NotFound => write!(f, "NotFound"),
+        }
+    }
 }
 // To define the type of graph I'm using
 type FamilyGraph = Graph<Person, Relationship, Directed>;
@@ -130,12 +152,12 @@ fn set_common_relatives() -> (Person, Person) {
             eprintln!("Make sure your .env file exists and dotenv().ok() is called");
         }
     }
-    let common_ancestor1 = std::env::var("COMMON_ANCESTOR1").expect("COMMON_ANCESTOR1 must be set");
-    let common_ancestor1_life = std::env::var("COMMON_ANCESTOR1_LIFE").expect("COMMON_ANCESTOR1_LIFE must be set");
-    let common_ancestor1_lastname = std::env::var("COMMON_ANCESTOR1_LASTNAME").expect("COMMON_ANCESTOR1_LASTNAME must be set");
-    let common_ancestor2 = std::env::var("COMMON_ANCESTOR2").expect("COMMON_ANCESTOR2 must be set");
-    let common_ancestor2_life = std::env::var("COMMON_ANCESTOR2_LIFE").expect("COMMON_ANCESTOR2_LIFE must be set");
-    let common_ancestor2_lastname = std::env::var("COMMON_ANCESTOR2_LASTNAME").expect("COMMON_ANCESTOR2_LASTNAME must be set");
+    let common_ancestor1 = env::var("COMMON_ANCESTOR1").expect("COMMON_ANCESTOR1 must be set");
+    let common_ancestor1_life = env::var("COMMON_ANCESTOR1_LIFE").expect("COMMON_ANCESTOR1_LIFE must be set");
+    let common_ancestor1_lastname = env::var("COMMON_ANCESTOR1_LASTNAME").expect("COMMON_ANCESTOR1_LASTNAME must be set");
+    let common_ancestor2 = env::var("COMMON_ANCESTOR2").expect("COMMON_ANCESTOR2 must be set");
+    let common_ancestor2_life = env::var("COMMON_ANCESTOR2_LIFE").expect("COMMON_ANCESTOR2_LIFE must be set");
+    let common_ancestor2_lastname = env::var("COMMON_ANCESTOR2_LASTNAME").expect("COMMON_ANCESTOR2_LASTNAME must be set");
 
     // Adds the common ancestors at the top
     (Person {
@@ -164,7 +186,7 @@ fn set_common_relatives() -> (Person, Person) {
 fn run(path: &Path) -> std::io::Result<()> {
     let mut workbook: Xls<_> = open_workbook(path).expect("Cannot open file");
 
-    // Read whole worksheet data and provide some statistics
+    // Read the whole worksheet data and provide some statistics
     let range = workbook.worksheet_range("Ark1")
         .expect("Cannot get worksheet");
 
@@ -200,10 +222,13 @@ fn run(path: &Path) -> std::io::Result<()> {
                 .map(|cell| cell.to_string()).collect();
             // get the current gen from the name (amount of *)
             let name = person_vec[0].clone();
+            if name.to_lowercase() == "navn" {
+                continue
+            }
             let new_gen = name.matches("*").count() as i8;
             // Need to check if this is because person is gen. 0 or related some other way
             let relation = if new_gen == 0 {
-                relation_check(name.to_string())
+                relation_check(name )
             } else {
                 Relationship::Relative
             };
@@ -211,7 +236,7 @@ fn run(path: &Path) -> std::io::Result<()> {
                 .expect("Cannot create person from row");
             if relation == Relationship::Relative {
                 // updates crnt and parent, and inserts child into family
-                insert_relative(&mut family, &mut crnt, &mut parent, level, new_gen, row_info);
+                 insert_relative(&mut family, &mut crnt, &mut parent, level, new_gen, row_info);
                 // update level
                 level = new_gen;
             } else if relation == Relationship::ChildFromPartner {
@@ -250,8 +275,25 @@ fn run(path: &Path) -> std::io::Result<()> {
         },
     );
     // println!("Enhanced DOT format:\n{:?}", fancy_dot);
-    let mut file = File::create("family_graph.txt")?;
-    file.write(format!("{:?}", fancy_dot).as_bytes())?;
+    //let mut file = File::create("family_graph.dot")?;
+    let dot_string = format!("{}", fancy_dot);
+
+    // turn the .dot file into a string, and then into a .svg file
+    let res = parse(&dot_string);
+    match parse(&dot_string) {
+        Ok(parsed_graph) => {  // Try a different variable name
+            let mut ctx = graphviz_rust::printer::PrinterContext::default();
+            match exec(parsed_graph, &mut ctx, vec![CommandArg::Format(Format::Svg)]) {
+                Ok(svg_bytes) => {
+                    std::fs::write("family_graph.svg", &svg_bytes)?;
+                    println!("SVG generated successfully!");
+                }
+                Err(e) => eprintln!("Error generating SVG: {}", e),
+            }
+        }
+        Err(e) => eprintln!("Error parsing DOT: {}", e),
+    }
+
     Ok(())
 }
 
@@ -261,8 +303,27 @@ fn main() {
         Ok(path) => println!("Loaded .env from: {:?}", path),
         Err(e) => println!("Could not load .env file: {}", e),
     }
-    let path = "./static/Wistoft_familien.xls";
+    println!("Current working directory: {:?}", env::current_dir().unwrap());
+    let path = "./static/Wistoft familien.xls";
+
+    let static_dir = Path::new("./static");
+    if static_dir.exists() {
+        println!("✓ Static directory exists");
+        // List contents of static directory
+        if let Ok(entries) = std::fs::read_dir(static_dir) {
+            println!("Contents of static directory:");
+            for entry in entries {
+                if let Ok(entry) = entry {
+                    println!("  - {}", entry.file_name().to_string_lossy());
+                }
+            }
+        }
+    } else {
+        println!("✗ Static directory does NOT exist");
+    }
+
     let full_path = Path::new(&path);
+    println!("Looking for file: {}", full_path.display());
     if full_path.exists() {
         println!("✓ File exists at the specified path");
         run(full_path);
@@ -274,6 +335,16 @@ fn main() {
             println!("Absolute path would be: {}", absolute_path.display());
         } else {
             println!("Cannot determine absolute path (file doesn't exist)");
+            if let Ok(entries) = std::fs::read_dir("./static") {
+                for entry in entries {
+                    if let Ok(entry) = entry {
+                        let filename = entry.file_name().to_string_lossy().to_lowercase();
+                        if filename == "wistoft_familien.xls" {
+                            println!("Found file with different case: {}", entry.file_name().to_string_lossy());
+                        }
+                    }
+                }
+            }
         }
     }
 }
