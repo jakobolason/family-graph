@@ -1,4 +1,4 @@
 /target
-/src/Wistoft_familien.xls
-/src/secrets.rs
-./.env
+Wistoft familien.xls
+family_graph.svg
+.env
