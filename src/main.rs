@@ -12,7 +12,7 @@ fn main() {
         "Current working directory: {:?}",
         env::current_dir().unwrap()
     );
-    let path = "./static/Wistoft familien.xls";
+    let path = "./Wistoft familien.xls";
 
     let static_dir = Path::new("./static");
     if static_dir.exists() {

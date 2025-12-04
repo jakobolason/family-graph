@@ -1,6 +1,4 @@
-use calamine::{DataType, Reader, Xls, open_workbook};
-use dotenv::dotenv;
-use graphviz_rust::attributes::packmode::graph;
+use calamine::{Data, DataType, Reader, Xls, open_workbook};
 use graphviz_rust::{
     cmd::{CommandArg, Format},
     exec, parse,
@@ -196,30 +194,7 @@ fn set_common_relatives() -> (Person, Person) {
     )
 }
 
-pub fn run(path: &Path) -> std::io::Result<()> {
-    let mut workbook: Xls<_> = open_workbook(path).expect("Cannot open file");
-
-    // Read the whole worksheet data and provide some statistics
-    let range = workbook
-        .worksheet_range("Ark1")
-        .expect("Cannot get worksheet");
-
-    let all_rows: Vec<_> = range.rows().collect();
-    let entries: Vec<Vec<_>> = match all_rows.len() {
-        len if len > 5 => all_rows[2..len - 3]
-            .split(|r| r.get(0).map_or(true, |cell| cell.is_empty()))
-            .filter(|group| !group.is_empty())
-            .map(|group| group.to_vec())
-            .collect(),
-        _ => {
-            println!(
-                "Warning: Not enough rows to trim (need >5, got {})",
-                all_rows.len()
-            );
-            Vec::new()
-        }
-    };
-
+fn create_family(entries: Vec<Vec<&[Data]>>) -> FamilyGraph {
     let mut family = FamilyGraph::new();
 
     let (ancestor, wife_ancestor): (Person, Person) = set_common_relatives();
@@ -271,6 +246,10 @@ pub fn run(path: &Path) -> std::io::Result<()> {
             }
         }
     }
+    family
+}
+
+fn create_dotviz(family: &FamilyGraph) -> std::io::Result<()> {
     let fancy_dot = Dot::with_attr_getters(
         &family,
         // Global graph attributes
@@ -304,7 +283,6 @@ pub fn run(path: &Path) -> std::io::Result<()> {
     let dot_string = format!("{}", fancy_dot);
 
     // turn the .dot file into a string, and then into a .svg file
-    let res = parse(&dot_string);
     match parse(&dot_string) {
         Ok(parsed_graph) => {
             // Try a different variable name
@@ -315,14 +293,44 @@ pub fn run(path: &Path) -> std::io::Result<()> {
                 vec![CommandArg::Format(Format::Svg)],
             ) {
                 Ok(svg_bytes) => {
-                    std::fs::write("family_graph.svg", &svg_bytes)?;
                     println!("SVG generated successfully!");
+                    std::fs::write("family_graph.svg", &svg_bytes)?;
                 }
-                Err(e) => eprintln!("Error generating SVG: {}", e),
+                Err(e) => {
+                    eprintln!("Error generating SVG: {}", e);
+                }
             }
         }
-        Err(e) => eprintln!("Error parsing DOT: {}", e),
+        Err(e) => {
+            eprintln!("Error parsing DOT: {}", e);
+        }
     }
-
     Ok(())
+}
+
+pub fn run(path: &Path) -> std::io::Result<()> {
+    let mut workbook: Xls<_> = open_workbook(path).expect("Cannot open file");
+
+    // Read the whole worksheet data and provide some statistics
+    let range = workbook
+        .worksheet_range("Ark1")
+        .expect("Cannot get worksheet");
+
+    let all_rows: Vec<_> = range.rows().collect();
+    let entries: Vec<Vec<_>> = match all_rows.len() {
+        len if len > 5 => all_rows[2..len - 3]
+            .split(|r| r.get(0).map_or(true, |cell| cell.is_empty()))
+            .filter(|group| !group.is_empty())
+            .map(|group| group.to_vec())
+            .collect(),
+        _ => {
+            println!(
+                "Warning: Not enough rows to trim (need >5, got {})",
+                all_rows.len()
+            );
+            Vec::new()
+        }
+    };
+    let family_graph = create_family(entries);
+    create_dotviz(&family_graph)
 }
