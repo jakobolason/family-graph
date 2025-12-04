@@ -131,67 +131,24 @@ fn insert_relative(
         // siblings
         *crnt = new_node;
         return;
-    } else if new_gen > 0 && n > 0 {
+    } else if n > 0 {
         // went from child to it's parent(or grandparent),
         // so should look up the tree
         for _ in 0..n {
+            // Try and get the grandparent from parent
             if let Some(grandparent) = family
                 .neighbors_directed(*parent, Direction::Incoming)
                 .next()
             {
                 *parent = grandparent;
+                println!("Updated parent to grandparent: {:?}", grandparent);
+            } else {
+                eprintln!("No grandparent found for node {:?}", parent);
             }
         }
     }
     *crnt = new_node;
     family.add_edge(*parent, *crnt, Relationship::Child);
-}
-
-/// Helper function: Sets the common relatives for the graph
-fn set_common_relatives() -> (Person, Person) {
-    match env::var("COMMON_ANCESTOR1") {
-        Ok(value) => println!("Common ancestor: {}", value),
-        Err(e) => {
-            eprintln!("Error reading COMMON_ANCESTOR1: {}", e);
-            eprintln!("Make sure your .env file exists and dotenv().ok() is called");
-        }
-    }
-    let common_ancestor1 = env::var("COMMON_ANCESTOR1").expect("COMMON_ANCESTOR1 must be set");
-    let common_ancestor1_life =
-        env::var("COMMON_ANCESTOR1_LIFE").expect("COMMON_ANCESTOR1_LIFE must be set");
-    let common_ancestor1_lastname =
-        env::var("COMMON_ANCESTOR1_LASTNAME").expect("COMMON_ANCESTOR1_LASTNAME must be set");
-    let common_ancestor2 = env::var("COMMON_ANCESTOR2").expect("COMMON_ANCESTOR2 must be set");
-    let common_ancestor2_life =
-        env::var("COMMON_ANCESTOR2_LIFE").expect("COMMON_ANCESTOR2_LIFE must be set");
-    let common_ancestor2_lastname =
-        env::var("COMMON_ANCESTOR2_LASTNAME").expect("COMMON_ANCESTOR2_LASTNAME must be set");
-
-    // Adds the common ancestors at the top
-    (
-        Person {
-            generation: -1,
-            name: common_ancestor1.to_string(),
-            birthdate: common_ancestor1_life.to_string(),
-            last_name: common_ancestor1_lastname.to_string(),
-            address: "".to_string(),
-            city: "".to_string(),
-            landline: "".to_string(),
-            mobile_number: "".to_string(),
-            email: "".to_string(),
-        },
-        Person {
-            generation: -1,
-            name: common_ancestor2.to_string(),
-            birthdate: common_ancestor2_life.to_string(),
-            last_name: common_ancestor2_lastname.to_string(),
-            address: "".to_string(),
-            city: "".to_string(),
-            landline: "".to_string(),
-            mobile_number: "".to_string(),
-            email: "".to_string(),
-        },
-    )
 }
 
 fn create_family(entries: Vec<Vec<&[Data]>>) -> FamilyGraph {
@@ -247,6 +204,53 @@ fn create_family(entries: Vec<Vec<&[Data]>>) -> FamilyGraph {
         }
     }
     family
+}
+
+/// Helper function: Sets the common relatives for the graph
+fn set_common_relatives() -> (Person, Person) {
+    match env::var("COMMON_ANCESTOR1") {
+        Ok(value) => println!("Common ancestor: {}", value),
+        Err(e) => {
+            eprintln!("Error reading COMMON_ANCESTOR1: {}", e);
+            eprintln!("Make sure your .env file exists and dotenv().ok() is called");
+        }
+    }
+    let common_ancestor1 = env::var("COMMON_ANCESTOR1").expect("COMMON_ANCESTOR1 must be set");
+    let common_ancestor1_life =
+        env::var("COMMON_ANCESTOR1_LIFE").expect("COMMON_ANCESTOR1_LIFE must be set");
+    let common_ancestor1_lastname =
+        env::var("COMMON_ANCESTOR1_LASTNAME").expect("COMMON_ANCESTOR1_LASTNAME must be set");
+    let common_ancestor2 = env::var("COMMON_ANCESTOR2").expect("COMMON_ANCESTOR2 must be set");
+    let common_ancestor2_life =
+        env::var("COMMON_ANCESTOR2_LIFE").expect("COMMON_ANCESTOR2_LIFE must be set");
+    let common_ancestor2_lastname =
+        env::var("COMMON_ANCESTOR2_LASTNAME").expect("COMMON_ANCESTOR2_LASTNAME must be set");
+
+    // Adds the common ancestors at the top
+    (
+        Person {
+            generation: -1,
+            name: common_ancestor1.to_string(),
+            birthdate: common_ancestor1_life.to_string(),
+            last_name: common_ancestor1_lastname.to_string(),
+            address: "".to_string(),
+            city: "".to_string(),
+            landline: "".to_string(),
+            mobile_number: "".to_string(),
+            email: "".to_string(),
+        },
+        Person {
+            generation: -1,
+            name: common_ancestor2.to_string(),
+            birthdate: common_ancestor2_life.to_string(),
+            last_name: common_ancestor2_lastname.to_string(),
+            address: "".to_string(),
+            city: "".to_string(),
+            landline: "".to_string(),
+            mobile_number: "".to_string(),
+            email: "".to_string(),
+        },
+    )
 }
 
 fn create_dotviz(family: &FamilyGraph) -> std::io::Result<()> {
