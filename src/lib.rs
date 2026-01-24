@@ -9,7 +9,9 @@ use petgraph::{dot::Dot, visit::EdgeRef};
 use std::{fs::File, io::Write, path::Path};
 
 pub mod family_graph;
-use family_graph::{D3Node, FamilyGraph, Person, Relationship, create_family};
+use family_graph::{FamilyGraph, Relationship, create_family};
+// re-export the common types
+pub use family_graph::{D3Node, Person};
 
 fn create_dotviz(family: &FamilyGraph) -> std::io::Result<()> {
     let fancy_dot = Dot::with_attr_getters(
@@ -172,4 +174,3 @@ pub fn run_grapher(
         }
     }
 }
-
