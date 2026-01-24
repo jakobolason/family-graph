@@ -3,28 +3,32 @@ use graphviz_rust::{
     cmd::{CommandArg, Format},
     exec, parse,
 };
-use petgraph::dot::Dot;
 use petgraph::graph::NodeIndex;
 use petgraph::{Directed, Direction, Graph};
-use std::fmt::Formatter;
-use std::path::Path;
-use std::{env, fmt};
+use petgraph::{dot::Dot, visit::EdgeRef};
+use std::{
+    env,
+    fmt::{self, Formatter},
+    fs::File,
+    io::Write,
+    path::Path,
+};
 
-#[derive(Debug)]
-struct Person {
-    generation: i8,
-    name: String,
-    birthdate: String,
-    last_name: String,
-    address: String,
-    city: String,
-    landline: String,
-    mobile_number: String,
-    email: String,
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Person {
+    pub generation: i8,
+    pub name: String,
+    pub birthdate: String,
+    pub last_name: String,
+    pub address: String,
+    pub city: String,
+    pub landline: String,
+    pub mobile_number: String,
+    pub email: String,
 }
 
 impl Person {
-    fn new(info: Vec<String>, generation: i8) -> Result<Self, &'static str> {
+    pub fn new(info: Vec<String>, generation: i8) -> Result<Self, &'static str> {
         let [
             name,
             birthdate,
@@ -35,11 +39,11 @@ impl Person {
             mobile_number,
             email,
         ]: [String; 8] = info.try_into().map_err(|_| "Expected exactly 8 elements")?;
-        let new_name = format!("{}, {}", name, generation);
+        // let new_name = format!("{}, {}", name, generation);
 
         Ok(Person {
             generation,
-            name: new_name,
+            name,
             birthdate,
             last_name,
             address,
@@ -49,26 +53,23 @@ impl Person {
             email,
         })
     }
-
-    fn default() -> Self {
-        Person {
-            generation: 0,
-            name: "insert_name".to_string(),
-            birthdate: "insert birthdate".to_string(),
-            last_name: "insert_lastname".to_string(),
-            address: "address here".to_string(),
-            city: "city here".to_string(),
-            landline: "landline here".to_string(),
-            mobile_number: "mobile number here".to_string(),
-            email: "email here".to_string(),
-        }
-    }
 }
 
 impl fmt::Display for Person {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self.name)
     }
+}
+
+// Setup for making d3 json object
+#[derive(Debug, serde::Serialize)]
+pub struct D3Node {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub _children: Option<Vec<D3Node>>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub children: Vec<D3Node>,
+    #[serde(flatten)]
+    pub person: Person,
 }
 
 #[derive(Debug, PartialEq)]
@@ -79,7 +80,6 @@ enum Relationship {
     Divorced,
     Dating,
     ChildFromPartner,
-    NotFound,
 }
 
 impl fmt::Display for Relationship {
@@ -91,7 +91,6 @@ impl fmt::Display for Relationship {
             Relationship::Divorced => write!(f, "Divorced"),
             Relationship::Dating => write!(f, "Kærester"),
             Relationship::ChildFromPartner => write!(f, "ChildFromPartner"),
-            Relationship::NotFound => write!(f, "NotFound"),
         }
     }
 }
@@ -270,7 +269,6 @@ fn create_dotviz(family: &FamilyGraph) -> std::io::Result<()> {
                     "style=dashed, color=orange, penwidth=2".to_owned()
                 }
                 Relationship::Relative => "style=dashed, color=gray, penwidth=1".to_owned(),
-                Relationship::NotFound => "style=dotted, color=lightgray, penwidth=1".to_owned(),
             }
         },
         // Node attribute getter
@@ -312,7 +310,50 @@ fn create_dotviz(family: &FamilyGraph) -> std::io::Result<()> {
     Ok(())
 }
 
-pub fn run(path: &Path) -> std::io::Result<()> {
+// This fn describes what information is taken from the edges.
+fn build_subtree(graph: &FamilyGraph, node_idx: NodeIndex) -> D3Node {
+    let children: Vec<D3Node> = graph
+        .edges_directed(node_idx, Direction::Outgoing)
+        .filter(|edge| matches!(edge.weight(), Relationship::Child))
+        .map(|edge| {
+            let child_idx = edge.target();
+            build_subtree(graph, child_idx)
+        })
+        .collect();
+    D3Node {
+        _children: None,
+        children,
+        person: graph[node_idx].clone(),
+    }
+}
+
+fn create_3d_export(family: &FamilyGraph) -> std::io::Result<Vec<D3Node>> {
+    let roots: Vec<NodeIndex> = family
+        .node_indices()
+        .filter(|&node_idx| {
+            !family
+                .edges_directed(node_idx, Direction::Incoming)
+                .any(|edge| matches!(edge.weight(), Relationship::Child))
+        })
+        .collect();
+
+    let mut tree_data: Vec<D3Node> = Vec::new();
+
+    for root_idx in roots {
+        let node_tree = build_subtree(family, root_idx);
+        tree_data.push(node_tree);
+    }
+    let json_string =
+        serde_json::to_string_pretty(&tree_data).expect("Failed to serialize tree data to JSON");
+    let js_content = format!("export const familytreeData = {};", json_string);
+    let mut file = File::create("family_data.js")?;
+    file.write_all(js_content.as_bytes())?;
+    println!("D3 data generated successfully: family_data.js");
+
+    Ok(tree_data)
+}
+
+pub fn run_grapher(path: &Path) -> std::io::Result<Vec<D3Node>> {
     let mut workbook: Xls<_> = open_workbook(path).expect("Cannot open file");
 
     // Read the whole worksheet data and provide some statistics
@@ -335,6 +376,8 @@ pub fn run(path: &Path) -> std::io::Result<()> {
             Vec::new()
         }
     };
-    let family_graph = create_family(entries);
-    create_dotviz(&family_graph)
+    let family_graph: Graph<Person, Relationship> = create_family(entries);
+    create_dotviz(&family_graph)?;
+    create_3d_export(&family_graph)
 }
+
