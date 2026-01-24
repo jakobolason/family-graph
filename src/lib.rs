@@ -327,7 +327,7 @@ fn build_subtree(graph: &FamilyGraph, node_idx: NodeIndex) -> D3Node {
     }
 }
 
-fn create_3d_export(family: &FamilyGraph) -> std::io::Result<Vec<D3Node>> {
+fn create_d3_export(family: &FamilyGraph) -> std::io::Result<Vec<D3Node>> {
     let roots: Vec<NodeIndex> = family
         .node_indices()
         .filter(|&node_idx| {
@@ -378,6 +378,5 @@ pub fn run_grapher(path: &Path) -> std::io::Result<Vec<D3Node>> {
     };
     let family_graph: Graph<Person, Relationship> = create_family(entries);
     create_dotviz(&family_graph)?;
-    create_3d_export(&family_graph)
+    create_d3_export(&family_graph)
 }
-
