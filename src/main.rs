@@ -1,5 +1,5 @@
 use dotenv::dotenv;
-use family_graph::run;
+use family_graph::run_grapher;
 use std::{env, path::Path};
 
 fn main() {
@@ -14,27 +14,13 @@ fn main() {
     );
     let path = "./Wistoft familien.xls";
 
-    let static_dir = Path::new("./static");
-    if static_dir.exists() {
-        println!("✓ Static directory exists");
-        // List contents of static directory
-        if let Ok(entries) = std::fs::read_dir(static_dir) {
-            println!("Contents of static directory:");
-            for entry in entries {
-                if let Ok(entry) = entry {
-                    println!("  - {}", entry.file_name().to_string_lossy());
-                }
-            }
-        }
-    } else {
-        println!("✗ Static directory does NOT exist");
-    }
-
     let full_path = Path::new(&path);
     println!("Looking for file: {}", full_path.display());
     if full_path.exists() {
         println!("File exists at the specified path");
-        run(full_path);
+        if let Err(e) = run_grapher(full_path, family_graph::CreateOptions::All) {
+            eprintln!("Error running grapher: {}", e);
+        };
     } else {
         println!("File does NOT exist at the specified path");
 
@@ -44,15 +30,13 @@ fn main() {
         } else {
             println!("Cannot determine absolute path (file doesn't exist)");
             if let Ok(entries) = std::fs::read_dir("./static") {
-                for entry in entries {
-                    if let Ok(entry) = entry {
-                        let filename = entry.file_name().to_string_lossy().to_lowercase();
-                        if filename == "wistoft_familien.xls" {
-                            println!(
-                                "Found file with different case: {}",
-                                entry.file_name().to_string_lossy()
-                            );
-                        }
+                for entry in entries.flatten() {
+                    let filename = entry.file_name().to_string_lossy().to_lowercase();
+                    if filename == "wistoft_familien.xls" {
+                        println!(
+                            "Found file with different case: {}",
+                            entry.file_name().to_string_lossy()
+                        );
                     }
                 }
             }

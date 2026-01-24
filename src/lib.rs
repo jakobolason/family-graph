@@ -353,7 +353,13 @@ fn create_d3_export(family: &FamilyGraph) -> std::io::Result<Vec<D3Node>> {
     Ok(tree_data)
 }
 
-pub fn run_grapher(path: &Path) -> std::io::Result<Vec<D3Node>> {
+pub enum CreateOptions {
+    DotWiz,
+    D3,
+    All,
+}
+
+pub fn run_grapher(path: &Path, opt: CreateOptions) -> std::io::Result<Vec<D3Node>> {
     let mut workbook: Xls<_> = open_workbook(path).expect("Cannot open file");
 
     // Read the whole worksheet data and provide some statistics
@@ -377,6 +383,15 @@ pub fn run_grapher(path: &Path) -> std::io::Result<Vec<D3Node>> {
         }
     };
     let family_graph: Graph<Person, Relationship> = create_family(entries);
-    create_dotviz(&family_graph)?;
-    create_d3_export(&family_graph)
+    match opt {
+        CreateOptions::DotWiz => {
+            create_dotviz(&family_graph)?;
+            Ok(Vec::new())
+        }
+        CreateOptions::D3 => create_d3_export(&family_graph),
+        CreateOptions::All => {
+            create_dotviz(&family_graph)?;
+            create_d3_export(&family_graph)
+        }
+    }
 }
