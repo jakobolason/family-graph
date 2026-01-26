@@ -3,19 +3,19 @@ use graphviz_rust::{
     cmd::{CommandArg, Format},
     exec, parse,
 };
+use petgraph::Direction;
+use petgraph::dot::Dot;
 use petgraph::graph::NodeIndex;
-use petgraph::{Direction, Graph};
-use petgraph::{dot::Dot, visit::EdgeRef};
 use std::{fs::File, io::Write, path::Path};
 
 pub mod family_graph;
-use family_graph::{FamilyGraph, Relationship, create_family};
+use family_graph::{FamilyGraph, Relationship};
 // re-export the common types
 pub use family_graph::{D3Node, Person};
 
-fn create_dotviz(family: &FamilyGraph) -> std::io::Result<()> {
+pub fn create_dotviz(family: &FamilyGraph) -> std::io::Result<()> {
     let fancy_dot = Dot::with_attr_getters(
-        &family,
+        &family.0,
         // Global graph attributes
         &[],
         // Edge attribute getter
@@ -71,24 +71,7 @@ fn create_dotviz(family: &FamilyGraph) -> std::io::Result<()> {
     Ok(())
 }
 
-// This fn describes what information is taken from the edges.
-fn build_subtree(graph: &FamilyGraph, node_idx: NodeIndex) -> D3Node {
-    let children: Vec<D3Node> = graph
-        .edges_directed(node_idx, Direction::Outgoing)
-        .filter(|edge| matches!(edge.weight(), Relationship::Child))
-        .map(|edge| {
-            let child_idx = edge.target();
-            build_subtree(graph, child_idx)
-        })
-        .collect();
-    D3Node {
-        _children: None,
-        children,
-        person: graph[node_idx].clone(),
-    }
-}
-
-fn create_d3_export(family: &FamilyGraph, export_path: &str) -> std::io::Result<Vec<D3Node>> {
+pub fn create_d3_export(family: &FamilyGraph, export_path: &str) -> std::io::Result<Vec<D3Node>> {
     let roots: Vec<NodeIndex> = family
         .node_indices()
         .filter(|&node_idx| {
@@ -101,7 +84,7 @@ fn create_d3_export(family: &FamilyGraph, export_path: &str) -> std::io::Result<
     let mut tree_data: Vec<D3Node> = Vec::new();
 
     for root_idx in roots {
-        let node_tree = build_subtree(family, root_idx);
+        let node_tree = family.build_subtree(root_idx);
         tree_data.push(node_tree);
     }
     let json_string =
@@ -125,12 +108,7 @@ pub enum CreateOptions {
 }
 
 /// Creates the family graph using a path to a .xls file, and builds the optional parts
-pub fn run_grapher(
-    path: &Path,
-    sheet_name: &str,
-    export_name: &str,
-    opt: CreateOptions,
-) -> std::io::Result<Vec<D3Node>> {
+pub fn run_grapher(path: &Path, sheet_name: &str) -> std::io::Result<FamilyGraph> {
     // TODO: Should also be able to handle xlsl files later
     let mut workbook: Xls<_> = open_workbook(path).expect("Cannot open file");
 
@@ -161,16 +139,6 @@ pub fn run_grapher(
             Vec::new()
         }
     };
-    let family_graph: Graph<Person, Relationship> = create_family(entries);
-    match opt {
-        CreateOptions::DotWiz => {
-            create_dotviz(&family_graph)?;
-            Ok(Vec::new())
-        }
-        CreateOptions::D3 => create_d3_export(&family_graph, export_name),
-        CreateOptions::All => {
-            create_dotviz(&family_graph)?;
-            create_d3_export(&family_graph, export_name)
-        }
-    }
+    let family_graph: FamilyGraph = FamilyGraph::create_family(entries);
+    Ok(family_graph)
 }

@@ -18,12 +18,7 @@ fn main() {
     println!("Looking for file: {}", full_path.display());
     if full_path.exists() {
         println!("File exists at the specified path");
-        if let Err(e) = run_grapher(
-            full_path,
-            "Ark1",
-            "family_data.js",
-            family_graph::CreateOptions::All,
-        ) {
+        if let Err(e) = run_grapher(full_path, "Ark1") {
             eprintln!("Error running grapher: {}", e);
         };
     } else {

@@ -1,6 +1,8 @@
 use calamine::Data;
 use petgraph::graph::NodeIndex;
+use petgraph::visit::EdgeRef;
 use petgraph::{Directed, Direction, Graph};
+use std::ops::{Deref, DerefMut};
 use std::{
     env,
     fmt::{self, Formatter},
@@ -86,8 +88,6 @@ impl fmt::Display for Relationship {
         }
     }
 }
-// To define the type of graph I'm using
-pub type FamilyGraph = Graph<Person, Relationship, Directed>;
 
 /// Explains the relations possible in the document
 fn relation_check(name: String) -> Relationship {
@@ -104,145 +104,190 @@ fn relation_check(name: String) -> Relationship {
     }
 }
 
-/// Business logic for inserting relatives into the graph
-fn insert_relative(
-    family: &mut FamilyGraph,
-    crnt: &mut NodeIndex,
-    parent: &mut NodeIndex,
-    level: i8,
-    new_gen: i8,
-    person: Person,
-) {
-    let n = level - new_gen;
-    let new_node = family.add_node(person);
-    if n == 0 || n == -1 {
-        // look in algorithm_ideas.md for explanation
-        if n == -1 {
-            *parent = *crnt;
-        } // 1 edge from parent to crnt
-    } else if new_gen == level {
-        // siblings
+/// This struct wraps the graph from petgraph.  
+pub struct FamilyGraph(pub Graph<Person, Relationship, Directed>);
+
+impl FamilyGraph {
+    pub fn new() -> Self {
+        Self(Graph::new())
+    }
+
+    // This fn describes what information is taken from the edges.
+    pub fn build_subtree(&self, node_idx: NodeIndex) -> D3Node {
+        let children: Vec<D3Node> = self
+            .edges_directed(node_idx, Direction::Outgoing)
+            // TODO: All edges should be allowed
+            // filters out all partners
+            .filter(|edge| matches!(edge.weight(), Relationship::Child))
+            .map(|edge| {
+                let child_idx = edge.target();
+                self.build_subtree(child_idx)
+            })
+            .collect();
+        D3Node {
+            _children: None,
+            children,
+            person: self[node_idx].clone(),
+        }
+    }
+    /// Business logic for inserting relatives into the graph
+    fn insert_relative(
+        &mut self,
+        crnt: &mut NodeIndex,
+        parent: &mut NodeIndex,
+        level: i8,
+        new_gen: i8,
+        person: Person,
+    ) {
+        let n = level - new_gen;
+        let new_node = self.add_node(person);
+        if n == 0 || n == -1 {
+            // look in algorithm_ideas.md for explanation
+            if n == -1 {
+                *parent = *crnt;
+            } // 1 edge from parent to crnt
+        } else if new_gen == level {
+            // siblings
+            *crnt = new_node;
+            return;
+        } else if n > 0 {
+            // went from child to it's parent(or grandparent),
+            // so should look up the tree
+            for _ in 0..n {
+                // Try and get the grandparent from parent
+                if let Some(grandparent) =
+                    self.neighbors_directed(*parent, Direction::Incoming).next()
+                {
+                    *parent = grandparent;
+                    println!("Updated parent to grandparent: {:?}", grandparent);
+                } else {
+                    eprintln!("No grandparent found for node {:?}", parent);
+                }
+            }
+        }
         *crnt = new_node;
-        return;
-    } else if n > 0 {
-        // went from child to it's parent(or grandparent),
-        // so should look up the tree
-        for _ in 0..n {
-            // Try and get the grandparent from parent
-            if let Some(grandparent) = family
-                .neighbors_directed(*parent, Direction::Incoming)
-                .next()
-            {
-                *parent = grandparent;
-                println!("Updated parent to grandparent: {:?}", grandparent);
-            } else {
-                eprintln!("No grandparent found for node {:?}", parent);
+        self.add_edge(*parent, *crnt, Relationship::Child);
+    }
+
+    /// Helper function: Sets the common relatives for the graph
+    fn set_common_relatives() -> (Person, Person) {
+        match env::var("COMMON_ANCESTOR1") {
+            Ok(value) => println!("Common ancestor: {}", value),
+            Err(e) => {
+                eprintln!("Error reading COMMON_ANCESTOR1: {}", e);
+                eprintln!("Make sure your .env file exists and dotenv().ok() is called");
             }
         }
+        let common_ancestor1 = env::var("COMMON_ANCESTOR1").expect("COMMON_ANCESTOR1 must be set");
+        let common_ancestor1_life =
+            env::var("COMMON_ANCESTOR1_LIFE").expect("COMMON_ANCESTOR1_LIFE must be set");
+        let common_ancestor1_lastname =
+            env::var("COMMON_ANCESTOR1_LASTNAME").expect("COMMON_ANCESTOR1_LASTNAME must be set");
+        let common_ancestor2 = env::var("COMMON_ANCESTOR2").expect("COMMON_ANCESTOR2 must be set");
+        let common_ancestor2_life =
+            env::var("COMMON_ANCESTOR2_LIFE").expect("COMMON_ANCESTOR2_LIFE must be set");
+        let common_ancestor2_lastname =
+            env::var("COMMON_ANCESTOR2_LASTNAME").expect("COMMON_ANCESTOR2_LASTNAME must be set");
+
+        // Adds the common ancestors at the top
+        (
+            Person {
+                generation: -1,
+                name: common_ancestor1.to_string(),
+                birthdate: common_ancestor1_life.to_string(),
+                last_name: common_ancestor1_lastname.to_string(),
+                address: "".to_string(),
+                city: "".to_string(),
+                landline: "".to_string(),
+                mobile_number: "".to_string(),
+                email: "".to_string(),
+            },
+            Person {
+                generation: -1,
+                name: common_ancestor2.to_string(),
+                birthdate: common_ancestor2_life.to_string(),
+                last_name: common_ancestor2_lastname.to_string(),
+                address: "".to_string(),
+                city: "".to_string(),
+                landline: "".to_string(),
+                mobile_number: "".to_string(),
+                email: "".to_string(),
+            },
+        )
     }
-    *crnt = new_node;
-    family.add_edge(*parent, *crnt, Relationship::Child);
+
+    fn new_with_common_relatives() -> Self {
+        let mut family = FamilyGraph::new();
+
+        let (ancestor, wife_ancestor): (Person, Person) = FamilyGraph::set_common_relatives();
+        let parent = family.add_node(ancestor);
+        let parent_partner = family.add_node(wife_ancestor);
+        family.add_edge(parent, parent_partner, Relationship::Married);
+        family
+    }
+
+    /// Uses row, cols from parameters and goes through document.
+    pub fn create_family(entries: Vec<Vec<&[Data]>>) -> Self {
+        let mut family = FamilyGraph::new_with_common_relatives();
+        // NOTE: This is 0, because the first inserted is the forefather
+        let mut parent = NodeIndex::new(0);
+        let mut crnt = parent;
+
+        // -1 to indicate the common ancestor node, and to comply with Excel sheet standard
+        let mut level: i8 = -1;
+        for family_group in entries {
+            for person in family_group {
+                // map Data into vector
+                let person_vec: Vec<String> = person.iter().map(|cell| cell.to_string()).collect();
+                // get the current gen from the name (amount of *)
+                let name = person_vec[0].clone();
+                if name.to_lowercase() == "navn" {
+                    continue;
+                }
+                let new_gen = name.matches("*").count() as i8;
+                // Need to check if this is because person is gen. 0 or related some other way
+                let relation = if new_gen == 0 {
+                    relation_check(name)
+                } else {
+                    Relationship::Relative
+                };
+                let row_info: Person =
+                    Person::new(person_vec, new_gen).expect("Cannot create person from row");
+                if relation == Relationship::Relative {
+                    // updates crnt and parent, and inserts child into family
+                    family.insert_relative(&mut crnt, &mut parent, level, new_gen, row_info);
+                    // update level
+                    level = new_gen;
+                } else if relation == Relationship::ChildFromPartner {
+                    // don't mutate crnt
+                    let child = family.add_node(row_info);
+                    family.add_edge(crnt, child, Relationship::ChildFromPartner);
+                } else {
+                    // The others are for relationships in varying degrees
+                    let relational = family.add_node(row_info);
+                    family.add_edge(crnt, relational, relation);
+                }
+            }
+        }
+        family
+    }
 }
 
-/// Uses row, cols from parameters and goes through document.
-pub fn create_family(entries: Vec<Vec<&[Data]>>) -> FamilyGraph {
-    let mut family = FamilyGraph::new();
-
-    let (ancestor, wife_ancestor): (Person, Person) = set_common_relatives();
-    let mut parent = family.add_node(ancestor);
-    let parent_partner = family.add_node(wife_ancestor);
-    family.add_edge(parent, parent_partner, Relationship::Married);
-    let mut crnt = parent;
-
-    // -1 to indicate the common ancestor node, and to comply with Excel sheet standard
-    let mut level: i8 = -1;
-    for family_group in entries {
-        for person in family_group {
-            // map Data into vector
-            let person_vec: Vec<String> = person.iter().map(|cell| cell.to_string()).collect();
-            // get the current gen from the name (amount of *)
-            let name = person_vec[0].clone();
-            if name.to_lowercase() == "navn" {
-                continue;
-            }
-            let new_gen = name.matches("*").count() as i8;
-            // Need to check if this is because person is gen. 0 or related some other way
-            let relation = if new_gen == 0 {
-                relation_check(name)
-            } else {
-                Relationship::Relative
-            };
-            let row_info: Person =
-                Person::new(person_vec, new_gen).expect("Cannot create person from row");
-            if relation == Relationship::Relative {
-                // updates crnt and parent, and inserts child into family
-                insert_relative(
-                    &mut family,
-                    &mut crnt,
-                    &mut parent,
-                    level,
-                    new_gen,
-                    row_info,
-                );
-                // update level
-                level = new_gen;
-            } else if relation == Relationship::ChildFromPartner {
-                // don't mutate crnt
-                let child = family.add_node(row_info);
-                family.add_edge(crnt, child, Relationship::ChildFromPartner);
-            } else {
-                // The others are for relationships in varying degrees
-                let relational = family.add_node(row_info);
-                family.add_edge(crnt, relational, relation);
-            }
-        }
+impl Default for FamilyGraph {
+    fn default() -> Self {
+        Self::new()
     }
-    family
 }
+// Use these such that i don't have to type self.0 everywhere
+impl Deref for FamilyGraph {
+    type Target = Graph<Person, Relationship, Directed>;
 
-/// Helper function: Sets the common relatives for the graph
-fn set_common_relatives() -> (Person, Person) {
-    match env::var("COMMON_ANCESTOR1") {
-        Ok(value) => println!("Common ancestor: {}", value),
-        Err(e) => {
-            eprintln!("Error reading COMMON_ANCESTOR1: {}", e);
-            eprintln!("Make sure your .env file exists and dotenv().ok() is called");
-        }
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
-    let common_ancestor1 = env::var("COMMON_ANCESTOR1").expect("COMMON_ANCESTOR1 must be set");
-    let common_ancestor1_life =
-        env::var("COMMON_ANCESTOR1_LIFE").expect("COMMON_ANCESTOR1_LIFE must be set");
-    let common_ancestor1_lastname =
-        env::var("COMMON_ANCESTOR1_LASTNAME").expect("COMMON_ANCESTOR1_LASTNAME must be set");
-    let common_ancestor2 = env::var("COMMON_ANCESTOR2").expect("COMMON_ANCESTOR2 must be set");
-    let common_ancestor2_life =
-        env::var("COMMON_ANCESTOR2_LIFE").expect("COMMON_ANCESTOR2_LIFE must be set");
-    let common_ancestor2_lastname =
-        env::var("COMMON_ANCESTOR2_LASTNAME").expect("COMMON_ANCESTOR2_LASTNAME must be set");
-
-    // Adds the common ancestors at the top
-    (
-        Person {
-            generation: -1,
-            name: common_ancestor1.to_string(),
-            birthdate: common_ancestor1_life.to_string(),
-            last_name: common_ancestor1_lastname.to_string(),
-            address: "".to_string(),
-            city: "".to_string(),
-            landline: "".to_string(),
-            mobile_number: "".to_string(),
-            email: "".to_string(),
-        },
-        Person {
-            generation: -1,
-            name: common_ancestor2.to_string(),
-            birthdate: common_ancestor2_life.to_string(),
-            last_name: common_ancestor2_lastname.to_string(),
-            address: "".to_string(),
-            city: "".to_string(),
-            landline: "".to_string(),
-            mobile_number: "".to_string(),
-            email: "".to_string(),
-        },
-    )
+}
+impl DerefMut for FamilyGraph {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
 }
