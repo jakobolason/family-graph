@@ -97,16 +97,6 @@ pub fn create_d3_export(family: &FamilyGraph, export_path: &str) -> std::io::Res
     Ok(tree_data)
 }
 
-/// To determine what to build
-pub enum CreateOptions {
-    /// Creates an SVG file
-    DotWiz,
-    /// A JSON object which D3 can handle
-    D3,
-    /// Builds both
-    All,
-}
-
 /// Creates the family graph using a path to a .xls file, and builds the optional parts
 pub fn run_grapher(path: &Path, sheet_name: &str) -> std::io::Result<FamilyGraph> {
     // TODO: Should also be able to handle xlsl files later

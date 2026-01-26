@@ -1,6 +1,6 @@
 [package]
 name = "family_graph"
-version = "0.1.1"
+version = "0.2.1"
 edition = "2024"
 description = "A Rust application to generate family relationship graphs from Excel data."
 repository = "https://github.com/jakobolason/family-graph"
