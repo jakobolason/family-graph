@@ -12,7 +12,7 @@ fn main() {
         "Current working directory: {:?}",
         env::current_dir().unwrap()
     );
-    let path = "./Wistoft familien.xls";
+    let path = "./Wistoft_familien.xls";
 
     let full_path = Path::new(&path);
     println!("Looking for file: {}", full_path.display());

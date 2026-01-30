@@ -8,6 +8,14 @@ use std::{
     fmt::{self, Formatter},
 };
 
+#[derive(Debug)]
+pub struct AncestorHeader {
+    pub name1: String,
+    pub years1: String,
+    pub name2: String,
+    pub years2: String,
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Person {
     pub generation: i8,
@@ -170,32 +178,44 @@ impl FamilyGraph {
     }
 
     /// Helper function: Sets the common relatives for the graph
-    fn set_common_relatives() -> (Person, Person) {
-        match env::var("COMMON_ANCESTOR1") {
-            Ok(value) => println!("Common ancestor: {}", value),
-            Err(e) => {
-                eprintln!("Error reading COMMON_ANCESTOR1: {}", e);
-                eprintln!("Make sure your .env file exists and dotenv().ok() is called");
+    fn set_common_relatives(ancestor_header: Option<AncestorHeader>) -> (Person, Person) {
+        let ancestors = match ancestor_header {
+            Some(anc) => anc,
+            None => {
+                match env::var("COMMON_ANCESTOR1") {
+                    Ok(value) => println!("Common ancestor: {}", value),
+                    Err(e) => {
+                        eprintln!("Error reading COMMON_ANCESTOR1: {}", e);
+                        eprintln!("Make sure your .env file exists and dotenv().ok() is called");
+                    }
+                }
+                let common_ancestor1 =
+                    env::var("COMMON_ANCESTOR1").expect("COMMON_ANCESTOR1 must be set");
+                let common_ancestor1_life =
+                    env::var("COMMON_ANCESTOR1_LIFE").expect("COMMON_ANCESTOR1_LIFE must be set");
+                let common_ancestor1_lastname = env::var("COMMON_ANCESTOR1_LASTNAME")
+                    .expect("COMMON_ANCESTOR1_LASTNAME must be set");
+                let common_ancestor2 =
+                    env::var("COMMON_ANCESTOR2").expect("COMMON_ANCESTOR2 must be set");
+                let common_ancestor2_life =
+                    env::var("COMMON_ANCESTOR2_LIFE").expect("COMMON_ANCESTOR2_LIFE must be set");
+                let common_ancestor2_lastname = env::var("COMMON_ANCESTOR2_LASTNAME")
+                    .expect("COMMON_ANCESTOR2_LASTNAME must be set");
+                AncestorHeader {
+                    name1: format!("{} {}", common_ancestor1, common_ancestor1_lastname),
+                    years1: common_ancestor1_life,
+                    name2: format!("{} {}", common_ancestor2, common_ancestor2_lastname),
+                    years2: common_ancestor2_life,
+                }
             }
-        }
-        let common_ancestor1 = env::var("COMMON_ANCESTOR1").expect("COMMON_ANCESTOR1 must be set");
-        let common_ancestor1_life =
-            env::var("COMMON_ANCESTOR1_LIFE").expect("COMMON_ANCESTOR1_LIFE must be set");
-        let common_ancestor1_lastname =
-            env::var("COMMON_ANCESTOR1_LASTNAME").expect("COMMON_ANCESTOR1_LASTNAME must be set");
-        let common_ancestor2 = env::var("COMMON_ANCESTOR2").expect("COMMON_ANCESTOR2 must be set");
-        let common_ancestor2_life =
-            env::var("COMMON_ANCESTOR2_LIFE").expect("COMMON_ANCESTOR2_LIFE must be set");
-        let common_ancestor2_lastname =
-            env::var("COMMON_ANCESTOR2_LASTNAME").expect("COMMON_ANCESTOR2_LASTNAME must be set");
-
+        };
         // Adds the common ancestors at the top
         (
             Person {
                 generation: -1,
-                name: common_ancestor1.to_string(),
-                birthdate: common_ancestor1_life.to_string(),
-                last_name: common_ancestor1_lastname.to_string(),
+                name: ancestors.name1,
+                birthdate: ancestors.years1,
+                last_name: String::new(),
                 address: "".to_string(),
                 city: "".to_string(),
                 landline: "".to_string(),
@@ -204,9 +224,9 @@ impl FamilyGraph {
             },
             Person {
                 generation: -1,
-                name: common_ancestor2.to_string(),
-                birthdate: common_ancestor2_life.to_string(),
-                last_name: common_ancestor2_lastname.to_string(),
+                name: ancestors.name2,
+                birthdate: ancestors.years2,
+                last_name: String::new(),
                 address: "".to_string(),
                 city: "".to_string(),
                 landline: "".to_string(),
@@ -216,10 +236,11 @@ impl FamilyGraph {
         )
     }
 
-    fn new_with_common_relatives() -> Self {
+    fn new_with_common_relatives(ancestor_header: Option<AncestorHeader>) -> Self {
         let mut family = FamilyGraph::new();
 
-        let (ancestor, wife_ancestor): (Person, Person) = FamilyGraph::set_common_relatives();
+        let (ancestor, wife_ancestor): (Person, Person) =
+            FamilyGraph::set_common_relatives(ancestor_header);
         let parent = family.add_node(ancestor);
         let parent_partner = family.add_node(wife_ancestor);
         family.add_edge(parent, parent_partner, Relationship::Married);
@@ -227,8 +248,11 @@ impl FamilyGraph {
     }
 
     /// Uses row, cols from parameters and goes through document.
-    pub fn create_family(entries: Vec<Vec<&[Data]>>) -> Self {
-        let mut family = FamilyGraph::new_with_common_relatives();
+    pub fn create_family(
+        entries: Vec<Vec<&[Data]>>,
+        ancestor_header: Option<AncestorHeader>,
+    ) -> Self {
+        let mut family = FamilyGraph::new_with_common_relatives(ancestor_header);
         // NOTE: This is 0, because the first inserted is the forefather
         let mut parent = NodeIndex::new(0);
         let mut crnt = parent;

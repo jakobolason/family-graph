@@ -6,12 +6,14 @@ use graphviz_rust::{
 use petgraph::Direction;
 use petgraph::dot::Dot;
 use petgraph::graph::NodeIndex;
+use regex::Regex;
 use std::{fs::File, io::Write, path::Path};
 
 pub mod family_graph;
-use family_graph::{FamilyGraph, Relationship};
+use family_graph::{AncestorHeader, FamilyGraph, Relationship};
 // re-export the common types
 pub use family_graph::{D3Node, Person};
+pub use petgraph::graph;
 
 pub fn create_dotviz(family: &FamilyGraph) -> std::io::Result<()> {
     let fancy_dot = Dot::with_attr_getters(
@@ -108,8 +110,29 @@ pub fn run_grapher(path: &Path, sheet_name: &str) -> std::io::Result<FamilyGraph
         .expect("Cannot get worksheet");
 
     let data_offet = 2;
-
     let all_rows: Vec<_> = range.rows().collect();
+
+    let re = Regex::new(
+        r"af\s+(?P<n1>.+?)\s+(?P<d1>\d{4}-\d{4})\s+og\s+(?P<n2>.+?)\s+(?P<d2>\d{4}-\d{4})",
+    )
+    .unwrap();
+    let a1_cell = all_rows
+        .first()
+        .expect("Is sheet empty?")
+        .first()
+        .expect("No first column?");
+    let header_names = match re.captures(&a1_cell.to_string()) {
+        Some(caps) => Some(AncestorHeader {
+            name1: caps.name("n1").map_or("", |m| m.as_str()).to_string(),
+            years1: caps.name("d1").map_or("", |m| m.as_str()).to_string(),
+            name2: caps.name("n2").map_or("", |m| m.as_str()).to_string(),
+            years2: caps.name("d2").map_or("", |m| m.as_str()).to_string(),
+        }),
+        _ => {
+            println!("a1 cell: {:?}", a1_cell);
+            panic!("could not find names in first row")
+        }
+    };
 
     fn cell_empty(r: &&[Data]) -> bool {
         r.first().map_or_else(|| true, |cell| cell.is_empty())
@@ -129,6 +152,6 @@ pub fn run_grapher(path: &Path, sheet_name: &str) -> std::io::Result<FamilyGraph
             Vec::new()
         }
     };
-    let family_graph: FamilyGraph = FamilyGraph::create_family(entries);
+    let family_graph: FamilyGraph = FamilyGraph::create_family(entries, header_names);
     Ok(family_graph)
 }
