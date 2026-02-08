@@ -10,9 +10,9 @@ use regex::Regex;
 use std::{fs::File, io::Write, path::Path};
 
 pub mod family_graph;
-use family_graph::{AncestorHeader, FamilyGraph, Relationship};
+use family_graph::{AncestorHeader, FamilyGraph};
 // re-export the common types
-pub use family_graph::{D3Node, Person};
+pub use family_graph::{D3Node, Person, Relationship};
 pub use petgraph::graph;
 
 pub fn create_dotviz(family: &FamilyGraph) -> std::io::Result<()> {
